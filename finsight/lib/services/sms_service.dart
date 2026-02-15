@@ -1,7 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:permission_handler/permission_handler.dart';
 
 class SmsService {
   static const platform = MethodChannel('com.genzloop.finsight/sms');
@@ -17,7 +17,7 @@ class SmsService {
         return e.map((key, value) => MapEntry(key.toString(), value));
       }).toList();
     } on PlatformException catch (e) {
-      print("[SmsService] Failed to get all SMS: '${e.message}'.");
+      debugPrint("[SmsService] Failed to get all SMS: '${e.message}'.");
       return [];
     }
   }
@@ -32,7 +32,7 @@ class SmsService {
         return e.map((key, value) => MapEntry(key.toString(), value));
       }).toList();
     } on PlatformException catch (e) {
-      print("[SmsService] Failed to get new SMS: '${e.message}'.");
+      debugPrint("[SmsService] Failed to get new SMS: '${e.message}'.");
       return [];
     }
   }
@@ -73,7 +73,7 @@ class SmsService {
       final List<dynamic> decoded = jsonDecode(jsonString);
       return decoded.cast<Map<String, dynamic>>();
     } catch (e) {
-      print("[SmsService] Error parsing pending SMS: $e");
+      debugPrint("[SmsService] Error parsing pending SMS: $e");
       return [];
     }
   }

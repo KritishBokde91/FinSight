@@ -307,6 +307,106 @@ def detect_transaction_type(body: str) -> Optional[str]:
     return None
 
 
+def detect_category(body: str, counterparty: str = '', payment_method: str = '', txn_type: str = '') -> str:
+    """
+    Detect spending category from SMS body and metadata.
+    Returns one of: shopping, food, travel, bills, salary, transfer,
+    entertainment, health, education, investment, emi, recharge, other.
+    """
+    body_lower = body.lower()
+    cp_lower = (counterparty or '').lower()
+    combined = f"{body_lower} {cp_lower}"
+    
+    # Priority-ordered category rules
+    CATEGORY_RULES = [
+        ('salary', [
+            r'\bsalary\b', r'\bpayroll\b', r'\bwage\b', r'\bstipend\b',
+            r'\bcompensation\b', r'\bneft.*(?:salary|payroll)\b',
+        ]),
+        ('emi', [
+            r'\bemi\b', r'\bloan\s*(?:repay|payment|installment)\b',
+            r'\binstallment\b', r'\bmortgage\b',
+        ]),
+        ('bills', [
+            r'\b(?:electric|electricity|gas|water|broadband|internet|wifi)\b',
+            r'\bbill\s*pay', r'\butility\b', r'\bjio\b.*(?:fiber|plan)',
+            r'\bairtel\b.*(?:fiber|plan|dth)', r'\btata\s*sky\b',
+            r'\bbses\b', r'\bbescom\b', r'\bmsedcl\b',
+            r'\btax\b', r'\bgst\b', r'\bincome\s*tax\b',
+            r'\bmunicipal\b', r'\bcouncil\b',
+        ]),
+        ('recharge', [
+            r'\brecharge\b', r'\bprepaid\b', r'\btalktime\b',
+            r'\bdata\s*pack\b', r'\bmobile.*plan\b',
+        ]),
+        ('food', [
+            r'\bswiggy\b', r'\bzomato\b', r'\bubereats\b', r'\bdominos\b',
+            r'\bpizza\b', r'\bmcdonalds\b', r'\bkfc\b', r'\bburger\b',
+            r'\brestaurant\b', r'\bcafe\b', r'\bfood\b', r'\bdining\b',
+            r'\bbigbasket\b', r'\bblinkit\b', r'\bzepto\b', r'\binstamart\b',
+            r'\bgrofers\b', r'\bgrocery\b', r'\bkirana\b',
+        ]),
+        ('shopping', [
+            r'\bamazon\b', r'\bflipkart\b', r'\bmyntra\b', r'\bajio\b',
+            r'\bmeesho\b', r'\bsnapdeal\b', r'\bnykaa\b', r'\bbigbazaar\b',
+            r'\breliance\b.*(?:retail|store|mart|digital)',
+            r'\bshopping\b', r'\bpurchase\b', r'\bstore\b', r'\bmall\b',
+            r'\bd.?mart\b', r'\bmore\s*retail\b', r'\btrend\b',
+        ]),
+        ('travel', [
+            r'\buber\b', r'\bola\b', r'\brapido\b', r'\blyft\b',
+            r'\birctc\b', r'\brailway\b', r'\btrain\b', r'\bflight\b',
+            r'\bmakemytrip\b', r'\bgoibibo\b', r'\bcleartrip\b',
+            r'\bhotel\b', r'\boyo\b', r'\bbooking\.com\b',
+            r'\bmetro\b', r'\bbus\b.*(?:ticket|pass|booking)',
+            r'\bfuel\b', r'\bpetrol\b', r'\bdiesel\b', r'\bhp\s*pay\b',
+            r'\bindian\s*oil\b', r'\bbharat\s*petroleum\b',
+            r'\bfastag\b', r'\btoll\b', r'\bparking\b',
+        ]),
+        ('entertainment', [
+            r'\bnetflix\b', r'\bhotstar\b', r'\bdisney\b', r'\bprime\b.*video',
+            r'\bspotify\b', r'\byoutube\b.*premium', r'\bgaana\b',
+            r'\bmovie\b', r'\bpvr\b', r'\binox\b', r'\bcinema\b',
+            r'\bgaming\b', r'\bsteam\b', r'\bplaystation\b',
+        ]),
+        ('health', [
+            r'\bhospital\b', r'\bclinic\b', r'\bmedic(?:al|ine)\b',
+            r'\bpharmac\b', r'\bdoctor\b', r'\blab\b.*(?:test|report)',
+            r'\b1mg\b', r'\bpharmeasy\b', r'\bnetmeds\b', r'\bpracto\b',
+            r'\bdiagnostic\b', r'\bhealth\b', r'\binsurance.*(?:health|medical)',
+        ]),
+        ('education', [
+            r'\bfee\b', r'\btuition\b', r'\bschool\b', r'\bcollege\b',
+            r'\buniversity\b', r'\bcourse\b', r'\budemy\b', r'\bcoursera\b',
+            r'\bunacademy\b', r'\bbyjus?\b', r'\beducation\b',
+            r'\bexam\b', r'\badmission\b',
+        ]),
+        ('investment', [
+            r'\bmutual\s*fund\b', r'\bsip\b', r'\bshare\b', r'\bstock\b',
+            r'\bzerodha\b', r'\bgroww\b', r'\bupstox\b', r'\bangel\b',
+            r'\bnse\b', r'\bbse\b', r'\bdemat\b', r'\btrading\b',
+            r'\bfd\b', r'\bfixed\s*deposit\b', r'\brd\b', r'\bppf\b',
+            r'\bnps\b', r'\bgold\b.*(?:invest|buy|bond)',
+        ]),
+        ('transfer', [
+            r'\btransfer\b', r'\bsent\s*to\b', r'\bpaid\s*to\b',
+            r'\breceived\s*from\b', r'\bp2p\b',
+        ]),
+    ]
+    
+    for category, patterns in CATEGORY_RULES:
+        for pat in patterns:
+            if re.search(pat, combined, re.IGNORECASE):
+                return category
+    
+    # Heuristic: salary-like credits
+    if txn_type == 'credit' and payment_method in ('NEFT', 'RTGS'):
+        if any(kw in cp_lower for kw in ['pvt', 'ltd', 'limited', 'corp', 'inc', 'llp', 'solutions', 'technologies', 'tech', 'services']):
+            return 'salary'
+    
+    return 'other'
+
+
 def extract_transaction(sms: dict) -> Dict:
     """
     Extract ALL transaction details from a single SMS.
@@ -314,7 +414,7 @@ def extract_transaction(sms: dict) -> Dict:
     Returns a rich transaction dict with:
     - amount, transaction_type, account, bank, counterparty,
       payment_method, reference, transaction_date, balance_after,
-      description, raw_body
+      category, description, raw_body
     """
     body = sms.get('body', '')
     sender = sms.get('address', '')
@@ -330,6 +430,9 @@ def extract_transaction(sms: dict) -> Dict:
     reference = parse_reference(body)
     txn_date = parse_transaction_date(body, timestamp)
     balance = parse_balance(body)
+    
+    # Detect spending category
+    category = detect_category(body, counterparty or '', payment_method or '', txn_type or '')
     
     # Build description from available info
     desc_parts = []
@@ -347,6 +450,7 @@ def extract_transaction(sms: dict) -> Dict:
     return {
         'sms_id': sms.get('_id', ''),
         'sender': sender,
+        'receiver': counterparty or '',
         'amount': amount,
         'all_amounts': all_amounts,
         'transaction_type': txn_type,
@@ -354,6 +458,8 @@ def extract_transaction(sms: dict) -> Dict:
         'bank_name': bank,
         'counterparty': counterparty,
         'payment_method': payment_method,
+        'category': category,
+        'category_edited': False,
         'reference_number': reference,
         'transaction_date': txn_date,
         'balance_after': balance,

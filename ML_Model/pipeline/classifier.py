@@ -24,6 +24,7 @@ from sklearn.metrics import (
     classification_report, confusion_matrix,
     accuracy_score, f1_score
 )
+
 from xgboost import XGBClassifier
 from typing import Tuple, Optional
 
@@ -38,7 +39,6 @@ VECTORIZER_PATH = os.path.join(MODELS_DIR, 'tfidf_vectorizer.pkl')
 
 # Rule-based confidence threshold — below this, use ML model
 CONFIDENCE_THRESHOLD = 0.65
-
 
 class SmsClassifier:
     """
