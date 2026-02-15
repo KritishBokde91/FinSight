@@ -3,9 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'sms_service.dart';
 import 'api_service.dart';
+import 'notification_service.dart';
+import 'auth_service.dart';
 
 class BackgroundService {
   static const String notificationChannelId = 'finsight_service_channel';
@@ -37,7 +38,7 @@ class BackgroundService {
         isForegroundMode: true,
         notificationChannelId: notificationChannelId,
         initialNotificationTitle: 'FinSight Active',
-        initialNotificationContent: 'Monitoring SMS in background',
+        initialNotificationContent: 'Monitoring SMS & UPI in background',
         foregroundServiceNotificationId: notificationId,
       ),
       iosConfiguration: IosConfiguration(
@@ -78,34 +79,35 @@ void onStart(ServiceInstance service) async {
 
 Future<void> _performBackgroundSync(ServiceInstance service) async {
   try {
-    // We need to initialize services/bindings if not already
-    // But ApiService and SmsService are static, so should be fine.
+    final userId = await AuthService.getUserId();
 
-    // Note: Permission check might fail in background if not already granted.
-    // We assume permissions are granted before service start.
-
+    // 1. Sync SMS
     final lastSync = await SmsService.getLastSyncTimestamp();
     final newSms = await SmsService.fetchNewSms(lastSync);
 
+    int syncedCount = 0;
     if (newSms.isNotEmpty) {
       final success = await ApiService.postSmsData(newSms);
       if (success) {
         await SmsService.saveLastSyncTimestamp();
-
-        // Update notification via service if supported, or local notification
-        if (service is AndroidServiceInstance) {
-          service.setForegroundNotificationInfo(
-            title: "FinSight Active",
-            content: "Synced ${newSms.length} new SMS",
-          );
-        }
-
-        // Also show local notification purely for visibility if service notification isn't enough
-        // _updateNotification('Synced ${newSms.length} new SMS');
-        // (Moved logic inside onStart context if needed, but setForegroundNotificationInfo is better)
+        syncedCount += newSms.length;
       }
     }
+
+    // 2. Sync UPI notifications
+    final notifTxns = await NotificationService.syncNotifications(
+      userId: userId,
+    );
+
+    // Update notification
+    final total = syncedCount + notifTxns;
+    if (total > 0 && service is AndroidServiceInstance) {
+      service.setForegroundNotificationInfo(
+        title: "FinSight Active",
+        content: "Synced $syncedCount SMS, $notifTxns UPI transactions",
+      );
+    }
   } catch (e) {
-    print("[BackgroundService] Sync error: $e");
+    debugPrint("[BackgroundService] Sync error: $e");
   }
 }
