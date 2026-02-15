@@ -267,6 +267,29 @@ def detect_transaction_type(body: str) -> Optional[str]:
     has_credit = any(kw in body_lower for kw in credit_kws)
     has_debit = any(kw in body_lower for kw in debit_kws)
     
+    # Comprehensive exclusions for non-transactional SMS
+    # (card statements, bill reminders, legal warnings, mandates, etc.)
+    non_txn_patterns = [
+        r'(?:bill|amount|total|min|outstanding|amt)[.\s]*(?:due|payable)',
+        r'statement.*(?:generated|ready|available)',
+        r'legal\s*(?:action|notice)',
+        r'despite.*reminder',
+        r'several\s*reminders',
+        r'(?:pay|click).*quickpay',
+        r'please\s*(?:pay|clear|settle)',
+        r'further\s*delay',
+        r'mandate.*(?:revoked|failed|rejected)',
+        r'(?:txn|transaction).*(?:declined|failed)',
+        r'(?:declined|failed).*insufficient',
+        r'fund\s*bal|securities\s*bal',
+        r'reported.*(?:fund|securities)',
+        r'is\s+due\s+on',
+        r'payable\s*by',
+    ]
+    for pat in non_txn_patterns:
+        if re.search(pat, body_lower):
+            return None
+    
     if has_credit and not has_debit:
         return 'credit'
     elif has_debit and not has_credit:

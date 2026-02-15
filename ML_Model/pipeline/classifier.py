@@ -128,7 +128,7 @@ class SmsClassifier:
             save: Whether to save trained model to disk
             
         Returns:
-            dict with training metrics
+            dict with training metrics including XGBoost eval results
         """
         print("[Classifier] Training ML ensemble...")
         
@@ -158,8 +158,37 @@ class SmsClassifier:
         le = LabelEncoder()
         y_encoded = le.fit_transform(y)
         
-        # Create ensemble
+        # ── Train/validation split for XGBoost eval metrics ──
+        from sklearn.model_selection import train_test_split
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+        )
+        
+        # ── Train XGBoost standalone first to capture per-round loss ──
         xgb = XGBClassifier(
+            n_estimators=200,
+            max_depth=6,
+            learning_rate=0.1,
+            use_label_encoder=False,
+            eval_metric='mlogloss',
+            random_state=42,
+        )
+        
+        # Train with eval_set to capture loss per round
+        xgb.fit(
+            X_train, y_train,
+            eval_set=[(X_train, y_train), (X_val, y_val)],
+            verbose=False,
+        )
+        xgb_eval_results = xgb.evals_result()
+        
+        # Get feature importance from XGBoost
+        tfidf_feature_names = self.vectorizer.get_feature_names_out().tolist()
+        all_feature_names = tfidf_feature_names + feature_cols
+        xgb_importance = xgb.feature_importances_
+        
+        # ── Now train ensemble on full data ──
+        xgb_full = XGBClassifier(
             n_estimators=200,
             max_depth=6,
             learning_rate=0.1,
@@ -176,7 +205,7 @@ class SmsClassifier:
         )
         
         self.model = VotingClassifier(
-            estimators=[('xgb', xgb), ('rf', rf)],
+            estimators=[('xgb', xgb_full), ('rf', rf)],
             voting='soft',
         )
         
@@ -196,6 +225,9 @@ class SmsClassifier:
         # Predictions for metrics
         y_pred = self.model.predict(X)
         
+        # Get prediction probabilities for ROC/PR curves
+        y_proba = self.model.predict_proba(X)
+        
         metrics = {
             'cv_accuracy_mean': round(float(cv_scores.mean()), 4),
             'cv_accuracy_std': round(float(cv_scores.std()), 4),
@@ -207,6 +239,16 @@ class SmsClassifier:
             ),
             'confusion_matrix': confusion_matrix(y_encoded, y_pred).tolist(),
             'labels': le.classes_.tolist(),
+            # New: XGBoost training curves data
+            'xgb_eval_results': xgb_eval_results,
+            'xgb_learning_rate': 0.1,
+            'xgb_n_estimators': 200,
+            # New: Feature importance
+            'feature_names': all_feature_names,
+            'feature_importance': xgb_importance.tolist(),
+            # New: Prediction probabilities for ROC/PR curves
+            'y_true': y_encoded.tolist(),
+            'y_proba': y_proba.tolist(),
         }
         
         if save:
@@ -217,9 +259,11 @@ class SmsClassifier:
             # Save label encoder
             joblib.dump(le, os.path.join(MODELS_DIR, 'label_encoder.pkl'))
             
-            # Save metrics
+            # Save metrics (without large arrays)
+            save_metrics = {k: v for k, v in metrics.items() 
+                          if k not in ('y_true', 'y_proba', 'feature_names', 'feature_importance')}
             with open(os.path.join(MODELS_DIR, 'training_metrics.json'), 'w') as f:
-                json.dump(metrics, f, indent=2, default=str)
+                json.dump(save_metrics, f, indent=2, default=str)
             
             print(f"[Classifier] Model saved to {MODELS_DIR}")
         

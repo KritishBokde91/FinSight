@@ -107,18 +107,69 @@ PROMO_INDICATORS = re.compile(
 )
 
 # ─── NON-TRANSACTIONAL FINANCIAL SMS ─────────────────────────────────────
-# These contain financial language but are NOT actual transactions
+# These contain financial language but are NOT actual transactions.
+# This is the CRITICAL gate that prevents bill reminders, card statements,
+# legal warnings, and balance inquiries from being classified as transactions.
 NON_TRANSACTION_FINANCIAL = re.compile(
-    r'(?i)(statement.*generated|statement.*ready|'
-    r'emi\s*reminder|payment\s*reminder|'
-    r'payment\s*due|overdue|'
-    r'credit\s*score|cibil|'
-    r'insurance.*renew|policy.*expire|'
-    r'loan\s*(?:offer|approved|eligible)|'
-    r'pre.?approved|'
-    r'upgrade\s*(?:card|limit)|'
-    r'increase.*limit|'
-    r'reward\s*points)',
+    r'(?i)('
+    # ── Card statements & bills ──
+    r'statement.*(?:generated|ready|available|download|view)'
+    r'|stmt.*(?:generated|ready)'
+    r'|bill\s*(?:generated|ready|available|is\s*ready)'
+    # ── Due amount patterns (handles "Amt. Due", "Amount Due", etc.) ──
+    r'|(?:total|min(?:imum)?|amt|amount)[.\s]*(?:due|payable)'
+    r'|(?:amt|amount)\.?\s*due'
+    r'|is\s+(?:due|payable)\s+(?:on|by|before)'
+    r'|(?:due|payable)\s*(?:on|by|before)\s*\d'
+    r'|amount\s*of\s*rs'
+    # ── Outstanding / overdue ──
+    r'|outstanding\s*(?:of|amt|amount|is|on|balance)'
+    r'|(?:the\s+)?outstanding\s+of\s+rs'
+    r'|overdue'
+    r'|(?:dues?|payment)\s+(?:is\s+)?(?:pending|overdue|unpaid)'
+    # ── Payment reminders & nudges ──
+    r'|payment\s*(?:due|reminder|pending)'
+    r'|emi\s*(?:reminder|due|overdue|bounce)'
+    r'|pay\s*(?:now|immediately|before|your\s*dues?)'
+    r'|please\s*(?:pay|clear|settle)'
+    r'|click.*(?:pay|quickpay)'
+    r'|quickpay'
+    r'|despite.*reminder'
+    r'|several\s*reminders'
+    r'|to\s*pay\s*(?:Rs|INR|\u20b9)'
+    # ── Legal / collection warnings ──
+    r'|legal\s*(?:action|notice|proceedings?)'
+    r'|further\s*delay.*(?:may|will|could)'
+    r'|urgently\s*(?:at|call|contact)'
+    r'|contact.*(?:urgently|immediately).*(?:discuss|payment)'
+    r'|initiated\s*against'
+    r'|issued.*(?:legal|notice)'
+    # ── Mandate / autopay ──
+    r'|mandate.*(?:revoked|failed|rejected|created|registered)'
+    r'|autopay.*(?:failed|revoked|rejected)'
+    r'|auto\s*debit.*(?:failed|rejected)'
+    # ── Balance inquiries / portfolio ──
+    r'|fund\s*bal'
+    r'|securities\s*bal'
+    r'|reported.*(?:fund|securities).*bal'
+    r'|portfolio\s*(?:value|summary|update)'
+    # ── Credit score / insurance / loans ──
+    r'|credit\s*score|cibil'
+    r'|insurance.*renew|policy.*expir'
+    r'|loan\s*(?:offer|approved|eligible|application)'
+    r'|pre.?approved'
+    # ── Card limit / reward ──
+    r'|upgrade\s*(?:card|limit)'
+    r'|increase.*limit'
+    r'|reward\s*points'
+    # ── Account alerts (non-transaction) ──
+    r'|login.*(?:failed|attempt)'
+    r'|incorrect\s*(?:mpin|pin|password)'
+    r'|app.*(?:registered|activated|started)'
+    # ── UPI declined / failed (no money moved) ──
+    r'|(?:txn|transaction).*(?:declined|failed|unsuccessful)'
+    r'|(?:declined|failed).*(?:insufficient|funds)'
+    r')',
     re.IGNORECASE
 )
 
@@ -152,7 +203,11 @@ def label_sms(body: str, sender: str = "") -> Tuple[str, str, float]:
         else:
             return ('otp', 'verification', 0.95)
     
-    # ── 3. TRANSACTION DETECTION ──
+    # ── 3. EARLY NON-TRANSACTION CHECK (highest priority for financials) ──
+    # This MUST run before transaction scoring to block bill/alert SMS
+    is_non_transaction = bool(NON_TRANSACTION_FINANCIAL.search(body))
+    
+    # ── 4. TRANSACTION DETECTION ──
     has_amount = bool(AMOUNT_PATTERN.search(body))
     has_account = bool(ACCOUNT_PATTERN.search(body))
     has_credit = bool(CREDIT_INDICATORS.search(body))
@@ -163,35 +218,38 @@ def label_sms(body: str, sender: str = "") -> Tuple[str, str, float]:
     has_imps = bool(IMPS_PATTERN.search(body))
     has_balance = bool(BALANCE_PATTERN.search(body))
     
-    # Strong transaction signals
-    transaction_score = 0
-    if has_amount: transaction_score += 0.25
-    if has_account: transaction_score += 0.20
-    if has_credit or has_debit: transaction_score += 0.30
-    if is_bank_sender: transaction_score += 0.15
-    if has_upi or has_neft or has_imps: transaction_score += 0.10
-    
-    # Check if this is a NON-TRANSACTIONAL financial SMS
-    is_non_transaction = bool(NON_TRANSACTION_FINANCIAL.search(body))
-    
-    if transaction_score >= 0.50 and not is_non_transaction:
-        # Determine sub-type
-        if has_credit and not has_debit:
-            sub_label = 'credit'
-        elif has_debit and not has_credit:
-            sub_label = 'debit'
-        elif has_credit and has_debit:
-            # Both present — look at context
-            credit_pos = CREDIT_INDICATORS.search(body).start()
-            debit_pos = DEBIT_INDICATORS.search(body).start()
-            sub_label = 'debit' if debit_pos < credit_pos else 'credit'
-        else:
-            # Has amount + account but no clear direction
-            sub_label = 'unknown_direction'
+    # If this is a non-transactional financial SMS, SKIP transaction scoring
+    # and go directly to financial_alert classification
+    if is_non_transaction:
+        # Jump to financial alert section below
+        pass
+    else:
+        # Strong transaction signals
+        transaction_score = 0
+        if has_amount: transaction_score += 0.25
+        if has_account: transaction_score += 0.20
+        if has_credit or has_debit: transaction_score += 0.30
+        if is_bank_sender: transaction_score += 0.15
+        if has_upi or has_neft or has_imps: transaction_score += 0.10
         
-        return ('financial_transaction', sub_label, min(transaction_score + 0.10, 1.0))
+        if transaction_score >= 0.50:
+            # Determine sub-type
+            if has_credit and not has_debit:
+                sub_label = 'credit'
+            elif has_debit and not has_credit:
+                sub_label = 'debit'
+            elif has_credit and has_debit:
+                # Both present — look at context
+                credit_pos = CREDIT_INDICATORS.search(body).start()
+                debit_pos = DEBIT_INDICATORS.search(body).start()
+                sub_label = 'debit' if debit_pos < credit_pos else 'credit'
+            else:
+                # Has amount + account but no clear direction
+                sub_label = 'unknown_direction'
+            
+            return ('financial_transaction', sub_label, min(transaction_score + 0.10, 1.0))
     
-    # ── 4. FINANCIAL ALERT (non-transaction) ──
+    # ── 5. FINANCIAL ALERT (non-transaction) ──
     financial_alert_score = 0
     if is_bank_sender: financial_alert_score += 0.30
     if has_amount: financial_alert_score += 0.15

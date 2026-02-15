@@ -103,6 +103,11 @@ async def receive_sms(payload: SmsPayload):
             # Step 3: Extract transaction details (only for financial_transaction)
             if enriched.get('label') == 'financial_transaction' and enriched.get('is_genuine', True):
                 txn = extract_transaction(sms)
+                
+                # Post-extraction validation: skip if no valid transaction type
+                if txn.get('transaction_type') is None:
+                    continue
+                    
                 txn['label'] = enriched['label']
                 txn['sub_label'] = enriched['sub_label']
                 txn['label_confidence'] = enriched['label_confidence']
@@ -194,6 +199,11 @@ async def reprocess_all_sms():
 
             if enriched.get('label') == 'financial_transaction' and enriched.get('is_genuine', True):
                 txn = extract_transaction(sms)
+                
+                # Post-extraction validation: skip if no valid transaction type
+                if txn.get('transaction_type') is None:
+                    continue
+                    
                 txn['label'] = enriched['label']
                 txn['sub_label'] = enriched['sub_label']
                 txn['label_confidence'] = enriched['label_confidence']
@@ -220,7 +230,7 @@ async def reprocess_all_sms():
 
 @app.get("/api/analytics")
 async def get_analytics(
-    period: str = Query(default="monthly", regex="^(weekly|monthly|quarterly|yearly)$")
+    period: str = Query(default="monthly", pattern="^(weekly|monthly|quarterly|yearly)$")
 ):
     """
     Get financial analytics for all transactions.

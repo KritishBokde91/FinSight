@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'sms_service.dart';
 import 'api_service.dart';
 
@@ -55,66 +54,58 @@ class BackgroundService {
       await service.startService();
     }
   }
+}
 
-  @pragma('vm:entry-point')
-  static Future<bool> onIosBackground(ServiceInstance service) async {
-    return true;
-  }
+// Top-level functions for background execution
+@pragma('vm:entry-point')
+Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  return true;
+}
 
-  // Top-level function for background execution
-  @pragma('vm:entry-point')
-  static void onStart(ServiceInstance service) async {
-    DartPluginRegistrant.ensureInitialized();
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  DartPluginRegistrant.ensureInitialized();
 
-    // Only available for flutter_background_service > 4.0.0
-    // service.on('stopService').listen((event) {
-    //   service.stopSelf();
-    // });
+  // Periodic sync
+  Timer.periodic(const Duration(minutes: 15), (timer) async {
+    await _performBackgroundSync(service);
+  });
 
-    // Periodic sync
-    Timer.periodic(const Duration(minutes: 15), (timer) async {
-      await _performBackgroundSync();
-    });
+  // Also sync immediately on start
+  await _performBackgroundSync(service);
+}
 
-    // Also sync immediately on start
-    await _performBackgroundSync();
-  }
+Future<void> _performBackgroundSync(ServiceInstance service) async {
+  try {
+    // We need to initialize services/bindings if not already
+    // But ApiService and SmsService are static, so should be fine.
 
-  static Future<void> _performBackgroundSync() async {
-    try {
-      if (await Permission.sms.status.isGranted) {
-        final lastSync = await SmsService.getLastSyncTimestamp();
-        final newSms = await SmsService.fetchNewSms(lastSync);
+    // Note: Permission check might fail in background if not already granted.
+    // We assume permissions are granted before service start.
 
-        if (newSms.isNotEmpty) {
-          final success = await ApiService.postSmsData(newSms);
-          if (success) {
-            await SmsService.saveLastSyncTimestamp();
-            _updateNotification('Synced ${newSms.length} new SMS');
-          }
+    final lastSync = await SmsService.getLastSyncTimestamp();
+    final newSms = await SmsService.fetchNewSms(lastSync);
+
+    if (newSms.isNotEmpty) {
+      final success = await ApiService.postSmsData(newSms);
+      if (success) {
+        await SmsService.saveLastSyncTimestamp();
+
+        // Update notification via service if supported, or local notification
+        if (service is AndroidServiceInstance) {
+          service.setForegroundNotificationInfo(
+            title: "FinSight Active",
+            content: "Synced ${newSms.length} new SMS",
+          );
         }
+
+        // Also show local notification purely for visibility if service notification isn't enough
+        // _updateNotification('Synced ${newSms.length} new SMS');
+        // (Moved logic inside onStart context if needed, but setForegroundNotificationInfo is better)
       }
-    } catch (e) {
-      print("[BackgroundService] Sync error: $e");
     }
-  }
-
-  static Future<void> _updateNotification(String message) async {
-    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        FlutterLocalNotificationsPlugin();
-
-    flutterLocalNotificationsPlugin.show(
-      notificationId,
-      'FinSight Active',
-      message,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          notificationChannelId,
-          'FinSight Background Service',
-          icon: 'ic_bg_service_small',
-          ongoing: true,
-        ),
-      ),
-    );
+  } catch (e) {
+    print("[BackgroundService] Sync error: $e");
   }
 }
