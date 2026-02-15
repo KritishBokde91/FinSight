@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../core/constants.dart';
+import '../models/transaction.dart';
 
 /// Service for communicating with the FinSight backend.
 class ApiService {
@@ -65,7 +66,7 @@ class ApiService {
   // ─── Transactions ──────────────────────────────────────────────────
 
   /// Fetch all processed transactions from the backend.
-  static Future<List<Map<String, dynamic>>> getTransactions() async {
+  static Future<List<Transaction>> getTransactions() async {
     try {
       final response = await http
           .get(Uri.parse('${AppConstants.apiBaseUrl}/api/transactions'))
@@ -74,7 +75,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
         final data = body['data'] as List<dynamic>? ?? [];
-        return data.cast<Map<String, dynamic>>();
+        return data.map((e) => Transaction.fromJson(e)).toList();
       }
     } catch (e) {
       print('[ApiService] Error fetching transactions: $e');
