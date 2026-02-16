@@ -443,9 +443,14 @@ async def clear_sms():
 async def get_transactions(user_id: Optional[str] = None):
     """Get all extracted transactions, optionally filtered by user."""
     if HAS_SUPABASE and user_id:
-        data = supa.get_user_transactions(user_id)
-        return {"data": data, "count": len(data)}
+        try:
+            data = supa.get_user_transactions(user_id)
+            if data:  # Only return if Supabase has data
+                return {"data": data, "count": len(data)}
+        except Exception as e:
+            print(f"[API] Error fetching from Supabase for user {user_id}: {e}")
     
+    # Fallback to file-based transactions
     data = _load_json(TRANSACTIONS_FILE)
     return {"data": data, "count": len(data)}
 
@@ -633,8 +638,16 @@ async def get_analytics(
     user_id: Optional[str] = None,
 ):
     """Get financial analytics."""
+    transactions = []
+    
     if HAS_SUPABASE and user_id:
-        transactions = supa.get_user_transactions(user_id, limit=5000)
+        try:
+            transactions = supa.get_user_transactions(user_id, limit=5000)
+            if not transactions:  # Fallback if Supabase has no data
+                transactions = _load_json(TRANSACTIONS_FILE)
+        except Exception as e:
+            print(f"[API] Error fetching from Supabase: {e}")
+            transactions = _load_json(TRANSACTIONS_FILE)
     else:
         transactions = _load_json(TRANSACTIONS_FILE)
     
@@ -645,8 +658,16 @@ async def get_analytics(
 @app.get("/api/analytics/summary")
 async def get_analytics_summary(user_id: Optional[str] = None):
     """Get quick summary of all analytics periods."""
+    transactions = []
+    
     if HAS_SUPABASE and user_id:
-        transactions = supa.get_user_transactions(user_id, limit=5000)
+        try:
+            transactions = supa.get_user_transactions(user_id, limit=5000)
+            if not transactions:  # Fallback if Supabase has no data
+                transactions = _load_json(TRANSACTIONS_FILE)
+        except Exception as e:
+            print(f"[API] Error fetching from Supabase: {e}")
+            transactions = _load_json(TRANSACTIONS_FILE)
     else:
         transactions = _load_json(TRANSACTIONS_FILE)
     

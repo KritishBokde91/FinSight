@@ -127,115 +127,117 @@ class _DashboardScreenState extends State<DashboardScreen>
       onRefresh: _loadData,
       color: AppTheme.gold,
       backgroundColor: AppTheme.surface,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-        children: [
-          // ── Header ──
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'FinSight',
-                    style: GoogleFonts.outfit(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimary,
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+          children: [
+            // ── Header ──
+            Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FinSight',
+                      style: GoogleFonts.outfit(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
-                  ),
-                  Text(
-                    DateFormat('EEEE, MMMM d').format(DateTime.now()),
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppTheme.textMuted,
+                    Text(
+                      DateFormat('EEEE, MMMM d').format(DateTime.now()),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: AppTheme.textMuted,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              // Sync button
-              _buildSyncButton(),
-            ],
-          ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1),
-
-          const SizedBox(height: 24),
-
-          // ── Net Flow Hero ──
-          _buildNetFlowCard(net, income, expense)
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 100.ms)
-              .slideY(begin: 0.1),
-
-          const SizedBox(height: 16),
-
-          // ── Income & Expense Cards ──
-          Row(
-            children: [
-              Expanded(
-                child:
-                    MetricCard(
-                          title: 'Income',
-                          value: '₹${_formatAmount(income)}',
-                          icon: Icons.south_west_rounded,
-                          color: AppTheme.success,
-                          subtitle: 'This month',
-                        )
-                        .animate()
-                        .fadeIn(duration: 500.ms, delay: 200.ms)
-                        .slideX(begin: -0.1),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child:
-                    MetricCard(
-                          title: 'Expense',
-                          value: '₹${_formatAmount(expense)}',
-                          icon: Icons.north_east_rounded,
-                          color: AppTheme.error,
-                          subtitle: 'This month',
-                        )
-                        .animate()
-                        .fadeIn(duration: 500.ms, delay: 300.ms)
-                        .slideX(begin: 0.1),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // ── Recent Transactions ──
-          const SectionHeader(
-            title: 'Recent Transactions',
-          ).animate().fadeIn(duration: 400.ms, delay: 400.ms),
-
-          const SizedBox(height: 8),
-
-          if (_recentTransactions.isEmpty)
-            _buildEmptyState()
-          else
-            ..._recentTransactions.asMap().entries.map((entry) {
-              final txn = entry.value;
-              return TransactionTile(
-                    description: txn.description,
-                    amount: txn.amount.toStringAsFixed(0),
-                    date: DateFormat(
-                      'MMM d',
-                    ).format(txn.date ?? DateTime.now()),
-                    category: txn.category,
-                    isCredit: txn.isCredit,
-                    paymentMethod: txn.paymentMethod != 'Other'
-                        ? txn.paymentMethod
-                        : null,
-                  )
-                  .animate()
-                  .fadeIn(
-                    duration: 400.ms,
-                    delay: Duration(milliseconds: 500 + entry.key * 100),
-                  )
-                  .slideX(begin: 0.05);
-            }),
-        ],
+                  ],
+                ),
+                const Spacer(),
+                // Sync button
+                _buildSyncButton(),
+              ],
+            ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1),
+        
+            const SizedBox(height: 24),
+        
+            // ── Net Flow Hero ──
+            _buildNetFlowCard(net, income, expense)
+                .animate()
+                .fadeIn(duration: 500.ms, delay: 100.ms)
+                .slideY(begin: 0.1),
+        
+            const SizedBox(height: 16),
+        
+            // ── Income & Expense Cards ──
+            Row(
+              children: [
+                Expanded(
+                  child:
+                      MetricCard(
+                            title: 'Income',
+                            value: '₹${_formatAmount(income)}',
+                            icon: Icons.south_west_rounded,
+                            color: AppTheme.success,
+                            subtitle: 'This month',
+                          )
+                          .animate()
+                          .fadeIn(duration: 500.ms, delay: 200.ms)
+                          .slideX(begin: -0.1),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child:
+                      MetricCard(
+                            title: 'Expense',
+                            value: '₹${_formatAmount(expense)}',
+                            icon: Icons.north_east_rounded,
+                            color: AppTheme.error,
+                            subtitle: 'This month',
+                          )
+                          .animate()
+                          .fadeIn(duration: 500.ms, delay: 300.ms)
+                          .slideX(begin: 0.1),
+                ),
+              ],
+            ),
+        
+            const SizedBox(height: 24),
+        
+            // ── Recent Transactions ──
+            const SectionHeader(
+              title: 'Recent Transactions',
+            ).animate().fadeIn(duration: 400.ms, delay: 400.ms),
+        
+            const SizedBox(height: 8),
+        
+            if (_recentTransactions.isEmpty)
+              _buildEmptyState()
+            else
+              ..._recentTransactions.asMap().entries.map((entry) {
+                final txn = entry.value;
+                return TransactionTile(
+                      description: txn.description,
+                      amount: txn.amount.toStringAsFixed(0),
+                      date: DateFormat(
+                        'MMM d',
+                      ).format(txn.date ?? DateTime.now()),
+                      category: txn.category,
+                      isCredit: txn.isCredit,
+                      paymentMethod: txn.paymentMethod != 'Other'
+                          ? txn.paymentMethod
+                          : null,
+                    )
+                    .animate()
+                    .fadeIn(
+                      duration: 400.ms,
+                      delay: Duration(milliseconds: 500 + entry.key * 100),
+                    )
+                    .slideX(begin: 0.05);
+              }),
+          ],
+        ),
       ),
     );
   }
