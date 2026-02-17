@@ -149,14 +149,39 @@ class SmsClassifier:
         hand_features = df[feature_cols].values.astype(float)
         
         # Combine
-        from scipy.sparse import hstack
+        from scipy.sparse import hstack, csr_matrix
         X = hstack([tfidf_matrix, hand_features])
+        # Convert to CSR for efficient row slicing and filtering
+        X = csr_matrix(X)
         y = df['label'].values
         
         # Encode labels
         from sklearn.preprocessing import LabelEncoder
         le = LabelEncoder()
         y_encoded = le.fit_transform(y)
+        
+        # ── Filter out classes with too few samples for stratification ──
+        # stratify requires at least 2 samples per class
+        import numpy as np
+        from collections import Counter
+        class_counts = Counter(y_encoded)
+        # Find indices of samples to keep (from classes with >= 2 samples)
+        min_class_samples = min(class_counts.values())
+        if min_class_samples < 2:
+            print(f"[Classifier] Filtering out classes with < 2 samples (min: {min_class_samples})")
+            keep_indices = []
+            for idx, cls in enumerate(y_encoded):
+                if class_counts[cls] >= 2:
+                    keep_indices.append(idx)
+            
+            for cls, count in class_counts.items():
+                if count < 2:
+                    print(f"  - Removing class {le.inverse_transform([cls])[0]} ({count} sample)")
+            
+            # Use fancy indexing after CSR conversion
+            X = X[np.array(keep_indices)]
+            y_encoded = y_encoded[np.array(keep_indices)]
+            print(f"  - Kept {len(y_encoded)} samples")
         
         # ── Train/validation split for XGBoost eval metrics ──
         from sklearn.model_selection import train_test_split
