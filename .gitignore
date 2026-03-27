@@ -14,6 +14,7 @@ ML_Model/env/
 # Ignore local data files acting as DB
 ML_Model/data/*.json
 ML_Model/sms_data.json
+ML_Model/pipeline/__pycache__/
 # Ignore training status/logs
 ML_Model/data/training_status.json
 # Optional: Ignore large model files if they shouldn't be in git
