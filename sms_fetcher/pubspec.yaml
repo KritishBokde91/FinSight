@@ -1,0 +1,33 @@
+name: sms_fetcher
+description: "PrivacySMS — On-device bank SMS dataset builder for FinSight ML model."
+publish_to: 'none'
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  flutter_sms_inbox: any
+  permission_handler: any
+  sqflite: any
+  path: any
+  path_provider: any
+  csv: any
+  intl: any
+  crypto: any
+  share_plus: ^12.0.2
+  http: ^1.6.0
+  shared_preferences: ^2.3.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

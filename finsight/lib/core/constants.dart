@@ -4,7 +4,7 @@ class AppConstants {
   /// Your local backend running on the same machine.
   /// Use your computer's local IP so the phone can reach it.
   /// Find it with: ip addr | grep inet
-  static const String apiBaseUrl = 'http://192.168.137.67:8080';
+  static const String apiBaseUrl = 'http://10.0.0.2:8080';
   static const String smsEndpoint = '$apiBaseUrl/api/sms';
 
   // ── SharedPreferences keys ───────────────────────────────────
